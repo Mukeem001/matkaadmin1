@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: matka-api-server
+    env: node
+    plan: free
+    buildCommand: "npm ci --legacy-peer-deps && npm run build"
+    startCommand: "cd artifacts/api-server && node build/src/index.js"
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: NPM_DEFAULT_REGISTRY
+        value: https://registry.npmjs.org/
