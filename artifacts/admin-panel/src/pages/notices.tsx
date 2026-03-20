@@ -1,0 +1,129 @@
+import { useState } from "react";
+import { useGetNotices, useCreateNotice, useDeleteNotice, getGetNoticesQueryKey } from "@workspace/api-client-react";
+import { useQueryClient } from "@tanstack/react-query";
+import { format } from "date-fns";
+import { Trash2, Plus, Megaphone } from "lucide-react";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import * as z from "zod";
+
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Switch } from "@/components/ui/switch";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+
+const noticeSchema = z.object({
+  title: z.string().min(1, "Title required"),
+  content: z.string().min(1, "Content required"),
+  isActive: z.boolean().default(true),
+});
+
+export default function Notices() {
+  const { data: notices, isLoading } = useGetNotices();
+  const { mutate: create, isPending } = useCreateNotice();
+  const { mutate: del } = useDeleteNotice();
+  
+  const queryClient = useQueryClient();
+  const { toast } = useToast();
+  const [dialogOpen, setDialogOpen] = useState(false);
+
+  const form = useForm<z.infer<typeof noticeSchema>>({
+    resolver: zodResolver(noticeSchema),
+    defaultValues: { title: "", content: "", isActive: true }
+  });
+
+  const onSubmit = (data: z.infer<typeof noticeSchema>) => {
+    create({ data }, {
+      onSuccess: () => {
+        toast({ title: "Notice published!" });
+        queryClient.invalidateQueries({ queryKey: getGetNoticesQueryKey() });
+        setDialogOpen(false);
+        form.reset();
+      }
+    });
+  };
+
+  const handleDelete = (id: number) => {
+    if (!confirm("Delete this notice?")) return;
+    del({ id }, {
+      onSuccess: () => {
+        toast({ title: "Notice deleted" });
+        queryClient.invalidateQueries({ queryKey: getGetNoticesQueryKey() });
+      }
+    });
+  };
+
+  return (
+    <div className="space-y-6 max-w-5xl">
+      <div className="flex items-center justify-between">
+        <div>
+          <h2 className="text-2xl font-display font-bold">App Notices</h2>
+          <p className="text-muted-foreground mt-1">Publish announcements to user app screens.</p>
+        </div>
+        <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
+          <DialogTrigger asChild>
+            <Button className="btn-primary-gradient gap-2">
+              <Plus className="w-4 h-4" /> New Notice
+            </Button>
+          </DialogTrigger>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Publish New Notice</DialogTitle>
+            </DialogHeader>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-4">
+              <div className="space-y-2">
+                <Label>Title</Label>
+                <Input {...form.register("title")} className="rounded-xl" placeholder="e.g. Holiday Update" />
+              </div>
+              <div className="space-y-2">
+                <Label>Message Content</Label>
+                <Textarea {...form.register("content")} className="rounded-xl min-h-[120px]" />
+              </div>
+              <div className="flex items-center justify-between p-4 rounded-xl border border-border/50 bg-muted/30">
+                <Label className="cursor-pointer">Active Status</Label>
+                <Switch checked={form.watch("isActive")} onCheckedChange={(c) => form.setValue("isActive", c)} />
+              </div>
+              <Button type="submit" className="w-full btn-primary-gradient mt-2" disabled={isPending}>
+                Publish
+              </Button>
+            </form>
+          </DialogContent>
+        </Dialog>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4">
+        {isLoading ? (
+          <div className="h-32 bg-muted animate-pulse rounded-2xl" />
+        ) : notices?.length === 0 ? (
+          <div className="text-center py-16 bg-muted/30 rounded-2xl border border-border/50 border-dashed">
+            <Megaphone className="w-12 h-12 text-muted-foreground/50 mx-auto mb-3" />
+            <p className="text-muted-foreground">No active notices.</p>
+          </div>
+        ) : notices?.map((notice) => (
+          <Card key={notice.id} className="overflow-hidden border-border/50 shadow-sm relative group">
+            <div className={`absolute top-0 bottom-0 left-0 w-1.5 ${notice.isActive ? 'bg-primary' : 'bg-muted-foreground/30'}`} />
+            <CardContent className="p-6 pl-8 flex items-start justify-between gap-4">
+              <div>
+                <div className="flex items-center gap-3 mb-1">
+                  <h3 className="font-bold text-lg">{notice.title}</h3>
+                  {!notice.isActive && <span className="text-xs bg-muted text-muted-foreground px-2 py-0.5 rounded-full">Inactive</span>}
+                </div>
+                <p className="text-muted-foreground">{notice.content}</p>
+                <p className="text-xs text-muted-foreground/60 mt-3 font-medium uppercase tracking-wider">
+                  Published {format(new Date(notice.createdAt), 'PPP')}
+                </p>
+              </div>
+              <Button variant="ghost" size="icon" onClick={() => handleDelete(notice.id)} className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
+                <Trash2 className="w-4 h-4" />
+              </Button>
+            </CardContent>
+          </Card>
+        ))}
+      </div>
+    </div>
+  );
+}
