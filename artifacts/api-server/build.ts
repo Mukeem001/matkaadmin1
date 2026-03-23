@@ -8,10 +8,10 @@ const __dirname = path.dirname(__filename);
 async function buildAll() {
   console.log("building server with TypeScript...");
   
-  // Simple approach: Just compile TypeScript to JavaScript
-  // No bundling needed - Node.js loads modules naturally at runtime
   try {
-    execSync("npx tsc -p tsconfig.json", {
+    // Build with project references enabled (-b flag)
+    // This builds lib/db, lib/api-zod, and api-server in order
+    execSync("npx tsc --build tsconfig.json", {
       cwd: __dirname,
       stdio: "inherit",
     });
