@@ -5,6 +5,7 @@ import { db, markets2Table, scraperLogsTable, resultsTable } from "@workspace/db
 import { GetScraperLogsQueryParams, UpdateMarketAutoConfigParams, UpdateMarketAutoConfigBody, FetchMarketResultNowParams } from "@workspace/api-zod";
 import { authMiddleware } from "../middlewares/auth.js";
 import { fetchAndUpdateMarketResult, scrapeLiveResults } from "../lib/scraper.js";
+import { fetchAndUpdateMarkets2Result } from "../lib/scraper2.js";
 import { getSchedulerStatus } from "../lib/scheduler.js";
 
 const router: IRouter = Router();
@@ -46,21 +47,27 @@ router.put("/markets2/:id/auto-config", authMiddleware, async (req, res): Promis
   res.json(formatMarkets2(market));
 });
 
-router.post("/markets2/:id/fetch-now", authMiddleware, async (req, res): Promise<void> => {
+router.post("/markets2/:id/fetch-now", async (req, res): Promise<void> => {
   const params = FetchMarketResultNowParams.safeParse(req.params);
   if (!params.success) {
     res.status(400).json({ error: "Invalid ID" });
     return;
   }
 
-  // Get date from query parameter (format: "yyyy-MM-dd")
-  const selectedDate = (req.query.date as string) || undefined;
-  
-  const result = await fetchAndUpdateMarketResult(params.data.id, selectedDate);
-  res.json(result);
+  try {
+    const result = await fetchAndUpdateMarkets2Result(params.data.id);
+    res.json(result);
+  } catch (error) {
+    console.error("Error fetching market2 now:", error);
+    res.status(500).json({ 
+      success: false, 
+      error: "Failed to fetch market results",
+      data: null 
+    });
+  }
 });
 
-router.get("/markets2/:id/live-results", authMiddleware, async (req, res): Promise<void> => {
+router.get("/markets2/:id/live-results", async (req, res): Promise<void> => {
   console.log("🔴 [LIVE-RESULTS-Markets2] Request received");
   console.log("🔴 [LIVE-RESULTS-Markets2] req.params:", req.params);
   
@@ -200,9 +207,9 @@ router.get("/markets2/:id/live-results", authMiddleware, async (req, res): Promi
   }
 });
 
-router.get("/markets2/:id/results/:date", authMiddleware, async (req, res): Promise<void> => {
+router.get("/markets2/:id/results/:date", async (req, res): Promise<void> => {
   const marketId = parseInt(String(req.params.id));
-  const resultDate = req.params.date; // format: "yyyy-MM-dd"
+  const resultDate = req.params.date as string; // format: "yyyy-MM-dd"
 
   if (!marketId || isNaN(marketId)) {
     res.status(400).json({ error: "Invalid market ID" });
@@ -235,6 +242,7 @@ router.get("/markets2/:id/results/:date", authMiddleware, async (req, res): Prom
     });
   } catch (error) {
     const msg = error instanceof Error ? error.message : "Unknown error";
+    console.error("Error fetching results for date:", msg);
     res.status(500).json({ error: msg });
   }
 });

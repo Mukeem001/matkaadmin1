@@ -1,9 +1,12 @@
 import * as cron from "node-cron";
 import { eq } from "drizzle-orm";
-import { db, marketsTable } from "@workspace/db";
+import { db, marketsTable, markets2Table } from "@workspace/db";
 import { fetchAndUpdateMarketResult } from "./scraper.js";
+import { fetchAndUpdateMarkets2Result, updateMarket2ActivityStatus } from "./scraper2.js";
+import { processMarketBidsPreClose } from "./bid-processor.js";
 
 let schedulerTask: cron.ScheduledTask | null = null;
+let midnightResetTask: cron.ScheduledTask | null = null;
 let lastRunAt: Date | null = null;
 let isRunning = false;
 
@@ -24,7 +27,24 @@ function timeToMinutes(hours: number, minutes: number): number {
   return hours * 60 + minutes;
 }
 
-// Update market isActive status based on openTime and closeTime
+// Daily reset at midnight - set all markets to isActive = true
+async function resetMarketsAtMidnight() {
+  try {
+    const now = new Date();
+    const timeStr = now.toISOString();
+    
+    const result = await db.update(marketsTable)
+      .set({ isActive: true });
+    
+    console.log(`[Daily Reset] At ${timeStr}: All markets reset to isActive = true`);
+  } catch (err) {
+    console.error("[Daily Reset] Error:", err);
+  }
+}
+
+// Update market isActive status based on openTime only
+// Logic: Market is ACTIVE only BEFORE pre-open window (before openTime - 10 mins)
+// After pre-open starts, becomes INACTIVE for rest of day
 async function updateMarketActivityStatus() {
   try {
     const markets = await db.select().from(marketsTable);
@@ -32,56 +52,22 @@ async function updateMarketActivityStatus() {
 
     for (const market of markets) {
       const { hours: openHour, minutes: openMin } = parseTimeString(market.openTime);
-      const { hours: closeHour, minutes: closeMin } = parseTimeString(market.closeTime);
-
       const openTimeInMinutes = timeToMinutes(openHour, openMin);
-      const closeTimeInMinutes = timeToMinutes(closeHour, closeMin);
 
-      const isMidnightSpanning = closeTimeInMinutes < openTimeInMinutes;
-      let shouldBeActive: boolean = true;
-
-      if (!isMidnightSpanning) {
-        // Normal market: opens and closes on same day (e.g., 9 AM - 11 PM)
-        const preOpenInactiveStart = openTimeInMinutes - 10; // e.g., 8:50 AM
-        const postCloseInactiveEnd = closeTimeInMinutes + 10; // e.g., 11:10 PM
-
-        // Inactive: 10 min before open until open time
-        if (currentTimeInMinutes >= preOpenInactiveStart && currentTimeInMinutes < openTimeInMinutes) {
-          shouldBeActive = false;
-        }
-        // Inactive: close time until 10 min after close
-        else if (currentTimeInMinutes >= closeTimeInMinutes && currentTimeInMinutes < postCloseInactiveEnd) {
-          shouldBeActive = false;
-        }
-        // Active: during trading hours and after post-close window
-        else {
-          shouldBeActive = true;
-        }
-      } else {
-        // Midnight-spanning market: opens at night, closes next morning (e.g., 9 PM - 9 AM)
-        const preOpenInactiveStart = openTimeInMinutes - 10; // e.g., 8:50 PM
-        const postCloseInactiveEnd = closeTimeInMinutes + 10; // e.g., 9:10 AM next day
-
-        // Inactive: 10 min before open until open time (night)
-        if (currentTimeInMinutes >= preOpenInactiveStart && currentTimeInMinutes < openTimeInMinutes) {
-          shouldBeActive = false;
-        }
-        // Inactive: close time until 10 min after close (morning)
-        else if (currentTimeInMinutes >= 0 && currentTimeInMinutes < postCloseInactiveEnd) {
-          shouldBeActive = false;
-        }
-        // Active: all other times
-        else {
-          shouldBeActive = true;
-        }
-      }
+      // Calculate if should be active
+      // Active ONLY from midnight until 10 min before openTime
+      // Inactive from pre-open (10 min before) to end of day
+      const preOpenInactiveStart = openTimeInMinutes - 10;
+      const shouldBeActive = currentTimeInMinutes < preOpenInactiveStart;
 
       // Update if status changed
       if (market.isActive !== shouldBeActive) {
         await db.update(marketsTable)
           .set({ isActive: shouldBeActive })
           .where(eq(marketsTable.id, market.id));
-        console.log(`[Market Activity] ${market.name}: isActive = ${shouldBeActive} (open: ${market.openTime}, close: ${market.closeTime}, current: ${String(Math.floor(currentTimeInMinutes / 60)).padStart(2, '0')}:${String(currentTimeInMinutes % 60).padStart(2, '0')})`);
+        
+        const currentTimeStr = `${String(Math.floor(currentTimeInMinutes / 60)).padStart(2, '0')}:${String(currentTimeInMinutes % 60).padStart(2, '0')}`;
+        console.log(`[Market Activity] ${market.name}: isActive = ${shouldBeActive} (openTime: ${market.openTime}, currentTime: ${currentTimeStr})`);
       }
     }
   } catch (err) {
@@ -107,8 +93,11 @@ export function startScheduler() {
     console.log(`[Scheduler] Running at ${lastRunAt.toISOString()}`);
 
     try {
-      // Update market activity status based on openTime and closeTime
+      // Update market activity status (Market 1)
       await updateMarketActivityStatus();
+
+      // Update market2 activity status (Market 2)
+      await updateMarket2ActivityStatus();
 
       // Get all markets with autoUpdate enabled and a source URL
       const markets = await db.select().from(marketsTable)
@@ -116,27 +105,68 @@ export function startScheduler() {
 
       const autoUpdateMarkets = markets.filter(m => m.sourceUrl);
 
-      if (autoUpdateMarkets.length === 0) {
+      // Get all markets2 with autoUpdate enabled and a source URL
+      const markets2 = await db.select().from(markets2Table)
+        .where(eq(markets2Table.autoUpdate, true));
+
+      const autoUpdateMarkets2 = markets2.filter(m => m.sourceUrl);
+
+      if (autoUpdateMarkets.length === 0 && autoUpdateMarkets2.length === 0) {
         console.log("[Scheduler] No markets with auto-update enabled");
         isRunning = false;
         return;
       }
 
-      console.log(`[Scheduler] Fetching results for ${autoUpdateMarkets.length} market(s)...`);
+      // Fetch results for Market 1
+      if (autoUpdateMarkets.length > 0) {
+        console.log(`[Scheduler] Fetching results for ${autoUpdateMarkets.length} market(s)...`);
 
-      // Fetch results asynchronously for all markets
-      const results = await Promise.allSettled(
-        autoUpdateMarkets.map(market => fetchAndUpdateMarketResult(market.id))
-      );
+        const results = await Promise.allSettled(
+          autoUpdateMarkets.map(market => fetchAndUpdateMarketResult(market.id))
+        );
 
-      results.forEach((result, i) => {
-        const market = autoUpdateMarkets[i];
-        if (result.status === "fulfilled") {
-          console.log(`[Scheduler] ${market.name}: ${result.value.message}`);
-        } else {
-          console.error(`[Scheduler] ${market.name}: Failed - ${result.reason}`);
-        }
-      });
+        results.forEach((result, i) => {
+          const market = autoUpdateMarkets[i];
+          if (result.status === "fulfilled") {
+            console.log(`[Scheduler] ${market.name}: ${result.value.message}`);
+          } else {
+            console.error(`[Scheduler] ${market.name}: Failed - ${result.reason}`);
+          }
+        });
+
+        // 🎯 After fetching results, process bids automatically
+        console.log(`[Scheduler] Processing bids for ${autoUpdateMarkets.length} market(s)...`);
+        const bidResults = await Promise.allSettled(
+          autoUpdateMarkets.map(market => processMarketBidsPreClose(market.id))
+        );
+
+        bidResults.forEach((result, i) => {
+          const market = autoUpdateMarkets[i];
+          if (result.status === "fulfilled") {
+            console.log(`[Scheduler] ${market.name} bids: ${result.value.message}`);
+          } else {
+            console.error(`[Scheduler] ${market.name} bids: Failed - ${result.reason}`);
+          }
+        });
+      }
+
+      // Fetch results for Market 2
+      if (autoUpdateMarkets2.length > 0) {
+        console.log(`[Scheduler] Fetching results for ${autoUpdateMarkets2.length} market2(s)...`);
+
+        const results2 = await Promise.allSettled(
+          autoUpdateMarkets2.map(market => fetchAndUpdateMarkets2Result(market.id))
+        );
+
+        results2.forEach((result, i) => {
+          const market = autoUpdateMarkets2[i];
+          if (result.status === "fulfilled") {
+            console.log(`[Scheduler] ${market.name}: ${result.value.message}`);
+          } else {
+            console.error(`[Scheduler] ${market.name}: Failed - ${result.reason}`);
+          }
+        });
+      }
     } catch (err) {
       console.error("[Scheduler] Error:", err);
     } finally {
@@ -145,6 +175,19 @@ export function startScheduler() {
   });
 
   console.log("[Scheduler] Started — running every minute");
+
+  // Register daily reset at midnight
+  if (midnightResetTask) {
+    console.log("[Daily Reset] Already scheduled");
+    return;
+  }
+
+  midnightResetTask = cron.schedule("0 0 * * *", async () => {
+    console.log("[Daily Reset] Triggering at 00:00...");
+    await resetMarketsAtMidnight();
+  });
+
+  console.log("[Daily Reset] Scheduled to run at 00:00 UTC daily");
 }
 
 export function stopScheduler() {
@@ -152,6 +195,12 @@ export function stopScheduler() {
     schedulerTask.stop();
     schedulerTask = null;
     console.log("[Scheduler] Stopped");
+  }
+
+  if (midnightResetTask) {
+    midnightResetTask.stop();
+    midnightResetTask = null;
+    console.log("[Daily Reset] Stopped");
   }
 }
 

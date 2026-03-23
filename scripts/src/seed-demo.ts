@@ -49,6 +49,7 @@ async function seedMarkets() {
   const markets = [
     { name: "Morning Market", openTime: "09:00", closeTime: "11:00" },
     { name: "Evening Market", openTime: "16:00", closeTime: "18:00" },
+    { name: "Test Market - 02:46", openTime: "02:46", closeTime: "11:59" },
   ];
 
   for (const m of markets) {

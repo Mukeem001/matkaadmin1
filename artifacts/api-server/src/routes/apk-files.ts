@@ -111,6 +111,58 @@ router.put("/apk-files/:id", authMiddleware, async (req, res): Promise<void> => 
   }
 });
 
+// PUBLIC - Check for APK updates (no auth required)
+// Used by Android app to check if new version is available
+router.get("/check-update", async (req, res): Promise<void> => {
+  try {
+    const { version, versionCode } = req.query;
+    const currentVersion = (version as string) || "0.0.0";
+    const currentVersionCode = parseInt(versionCode as string) || 0;
+
+    // Get latest active APK
+    const apkFiles = await db.select()
+      .from(apkFilesTable)
+      .where(eq(apkFilesTable.isActive, "true"))
+      .orderBy((t) => [t.updatedAt])
+      .limit(1);
+
+    if (!apkFiles || apkFiles.length === 0) {
+      res.json({
+        hasUpdate: false,
+        message: "No APK available",
+      });
+      return;
+    }
+
+    const latestApk = apkFiles[apkFiles.length - 1];
+    const latestVersionCode = parseInt(latestApk.versionCode || "0") || 0;
+
+    // Compare versions - simple numeric comparison
+    if (latestVersionCode > currentVersionCode) {
+      res.json({
+        hasUpdate: true,
+        latestVersion: latestApk.versionName || "1.0.0",
+        latestVersionCode: latestApk.versionCode || "0",
+        downloadUrl: `${process.env.APP_BASE_URL || "http://localhost:4000"}${latestApk.filepath}`,
+        filesize: latestApk.filesize,
+        releaseNotes: `Updated to version ${latestApk.versionName}`,
+      });
+    } else {
+      res.json({
+        hasUpdate: false,
+        message: "You are using the latest version",
+        currentVersion: latestApk.versionName,
+      });
+    }
+  } catch (error) {
+    console.error("Error checking APK update:", error);
+    res.status(500).json({
+      hasUpdate: false,
+      error: "Failed to check for updates",
+    });
+  }
+});
+
 // DELETE APK file
 router.delete("/apk-files/:id", authMiddleware, async (req, res): Promise<void> => {
   try {

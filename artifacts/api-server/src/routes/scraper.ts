@@ -55,7 +55,7 @@ router.post("/markets/:id/fetch-now", authMiddleware, async (req, res): Promise<
   // Get date from query parameter (format: "yyyy-MM-dd")
   const selectedDate = (req.query.date as string) || undefined;
   
-  const result = await fetchAndUpdateMarketResult(params.data.id, selectedDate);
+  const result = await fetchAndUpdateMarketResult(params.data.id);
   res.json(result);
 });
 
@@ -199,7 +199,7 @@ router.get("/markets/:id/live-results", authMiddleware, async (req, res): Promis
 
 router.get("/markets/:id/results/:date", authMiddleware, async (req, res): Promise<void> => {
   const marketId = parseInt(String(req.params.id));
-  const resultDate = req.params.date; // format: "yyyy-MM-dd"
+  const resultDate = req.params.date as string; // format: "yyyy-MM-dd"
 
   if (!marketId || isNaN(marketId)) {
     res.status(400).json({ error: "Invalid market ID" });

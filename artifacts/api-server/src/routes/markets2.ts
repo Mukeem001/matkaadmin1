@@ -13,55 +13,75 @@ const formatMarkets2 = (m: typeof markets2Table.$inferSelect) => ({
 });
 
 router.get("/markets2", async (_req, res): Promise<void> => {
-  const markets = await db.select().from(markets2Table);
-  res.json(markets.map(formatMarkets2));
+  try {
+    const markets = await db.select().from(markets2Table);
+    res.json(markets.map(formatMarkets2));
+  } catch (error) {
+    console.error("Error fetching markets2:", error);
+    res.status(500).json({ error: "Failed to fetch markets" });
+  }
 });
 
 router.post("/markets2", authMiddleware, async (req, res): Promise<void> => {
-  const body = CreateMarketBody.safeParse(req.body);
-  if (!body.success) {
-    res.status(400).json({ error: "Invalid request" });
-    return;
-  }
+  try {
+    const body = CreateMarketBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "Invalid request" });
+      return;
+    }
 
-  const result = await db.insert(markets2Table).values(body.data).returning();
-  const market = result[0];
-  res.status(201).json(formatMarkets2(market));
+    const result = await db.insert(markets2Table).values(body.data).returning();
+    const market = result[0];
+    res.status(201).json(formatMarkets2(market));
+  } catch (error) {
+    console.error("Error creating market2:", error);
+    res.status(500).json({ error: "Failed to create market" });
+  }
 });
 
 router.get("/markets2/:id", userAuthMiddleware, async (req, res): Promise<void> => {
-  const params = GetMarketByIdParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: "Invalid ID" });
-    return;
+  try {
+    const params = GetMarketByIdParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Invalid ID" });
+      return;
+    }
+    const result = await db.select().from(markets2Table).where(eq(markets2Table.id, params.data.id));
+    const market = result[0];
+    if (!market) {
+      res.status(404).json({ error: "Market not found" });
+      return;
+    }
+    res.json(formatMarkets2(market));
+  } catch (error) {
+    console.error("Error fetching market2:", error);
+    res.status(500).json({ error: "Failed to fetch market" });
   }
-  const result = await db.select().from(markets2Table).where(eq(markets2Table.id, params.data.id));
-  const market = result[0];
-  if (!market) {
-    res.status(404).json({ error: "Market not found" });
-    return;
-  }
-  res.json(formatMarkets2(market));
 });
 
 router.put("/markets2/:id", authMiddleware, async (req, res): Promise<void> => {
-  const params = UpdateMarketParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: "Invalid ID" });
-    return;
+  try {
+    const params = UpdateMarketParams.safeParse(req.params);
+    if (!params.success) {
+      res.status(400).json({ error: "Invalid ID" });
+      return;
+    }
+    const body = UpdateMarketBody.safeParse(req.body);
+    if (!body.success) {
+      res.status(400).json({ error: "Invalid request" });
+      return;
+    }
+    const result = await db.update(markets2Table).set(body.data).where(eq(markets2Table.id, params.data.id)).returning();
+    const market = result[0];
+    if (!market) {
+      res.status(404).json({ error: "Market not found" });
+      return;
+    }
+    res.json(formatMarkets2(market));
+  } catch (error) {
+    console.error("Error updating market2:", error);
+    res.status(500).json({ error: "Failed to update market" });
   }
-  const body = UpdateMarketBody.safeParse(req.body);
-  if (!body.success) {
-    res.status(400).json({ error: "Invalid request" });
-    return;
-  }
-  const result = await db.update(markets2Table).set(body.data).where(eq(markets2Table.id, params.data.id)).returning();
-  const market = result[0];
-  if (!market) {
-    res.status(404).json({ error: "Market not found" });
-    return;
-  }
-  res.json(formatMarkets2(market));
 });
 
 router.delete("/markets2/:id", authMiddleware, async (req, res): Promise<void> => {

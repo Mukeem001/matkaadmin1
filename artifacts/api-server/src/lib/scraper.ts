@@ -3,11 +3,37 @@ import * as cheerio from "cheerio";
 import { eq, and } from "drizzle-orm";
 import { format } from "date-fns";
 import { db, marketsTable, scraperLogsTable, resultsTable } from "@workspace/db";
+import { getTodayDateIST } from "./date-utils";
 
 export interface ScrapedResult {
   openResult?: string;
   closeResult?: string;
   jodiResult?: string;
+}
+
+// ================= HELPER FUNCTIONS =================
+function parseTimeString(timeStr: string): { hours: number; minutes: number } {
+  const [hours, minutes] = timeStr.split(":").map(Number);
+  return { hours, minutes };
+}
+
+function timeToMinutes(hours: number, minutes: number): number {
+  return hours * 60 + minutes;
+}
+
+function getCurrentTimeInMinutes(): number {
+  const now = new Date();
+  return now.getHours() * 60 + now.getMinutes();
+}
+
+// Check if current time is after closeTime + 20 minutes
+function isAfterCloseWindow(closeTime: string): boolean {
+  const { hours: closeHour, minutes: closeMin } = parseTimeString(closeTime);
+  const closeTimeInMinutes = timeToMinutes(closeHour, closeMin);
+  const closeWindowEndMinutes = closeTimeInMinutes + 20; // 20 min after close
+  const currentTimeInMinutes = getCurrentTimeInMinutes();
+  
+  return currentTimeInMinutes >= closeWindowEndMinutes;
 }
 
 // ================= SCRAPER =================
@@ -224,6 +250,19 @@ export async function fetchAndUpdateMarketResult(
     return { success: false, message: "No source URL" };
   }
 
+  // ✅ Check if current time is after closeTime + 20 minutes
+  if (!isAfterCloseWindow(market.closeTime)) {
+    const { hours, minutes } = parseTimeString(market.closeTime);
+    const closeWindow = timeToMinutes(hours, minutes) + 20;
+    const closeHrs = Math.floor(closeWindow / 60) % 24;
+    const closeMins = closeWindow % 60;
+    const windowTimeStr = `${String(closeHrs).padStart(2, '0')}:${String(closeMins).padStart(2, '0')}`;
+    return { 
+      success: false, 
+      message: `Can fetch only after ${windowTimeStr} (closeTime: ${market.closeTime} + 20 min)` 
+    };
+  }
+
   let scraped: ScrapedResult;
 
   try {
@@ -260,11 +299,8 @@ export async function fetchAndUpdateMarketResult(
     return { success: false, message: "Invalid result" };
   }
 
-  // ✅ YESTERDAY SAVE
-  const saveDate = new Date();
-  saveDate.setDate(saveDate.getDate() - 1);
-
-  const resultDateStr = format(saveDate, "yyyy-MM-dd");
+  // ✅ TODAY's DATE (not YESTERDAY)
+  const resultDateStr = getTodayDateIST();
 
   const [existingResult] = await db
     .select()
@@ -309,7 +345,7 @@ export async function fetchAndUpdateMarketResult(
 
   return {
     success: true,
-    message: "✅ Result saved (first page only)",
+    message: "✅ Result saved (first page only) - TODAY's date",
     data: scraped,
   };
 }

@@ -40,10 +40,13 @@ const flexibleAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunct
   }
 };
 
-router.get("/dashboard/stats", flexibleAuthMiddleware, async (req, res): Promise<void> => {
+router.get("/dashboard/stats", flexibleAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     console.log("[Dashboard Stats] Request received");
-    const today = new Date();
+    // Use IST timezone for today's date
+    const now = new Date();
+    const istOffset = 5.5 * 60 * 60 * 1000; // IST is UTC+5:30
+    const today = new Date(now.getTime() + istOffset);
     today.setHours(0, 0, 0, 0);
 
     // Get counts safely

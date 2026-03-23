@@ -4,6 +4,7 @@ export { marketsTable } from "./markets";
 export { markets2Table } from "./markets2";
 export { resultsTable } from "./results";
 export { bidsTable } from "./bids";
+export { bids2Table } from "./bids2";
 export { depositsTable } from "./deposits";
 export { withdrawalsTable } from "./withdrawals";
 export { gameRatesTable } from "./game_rates";

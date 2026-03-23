@@ -25,6 +25,8 @@ export default defineConfig({
     alias: {
       "@": path.resolve(import.meta.dirname, "src"),
       "@assets": path.resolve(import.meta.dirname, "..", "..", "attached_assets"),
+      "react": path.resolve(import.meta.dirname, "../../node_modules/react"),
+      "react-dom": path.resolve(import.meta.dirname, "../../node_modules/react-dom"),
     },
     dedupe: ["react", "react-dom"],
   },
@@ -51,8 +53,9 @@ export default defineConfig({
     proxy: {
       // Proxy API requests to the backend server.
       "/api": {
-        target: "http://localhost:4000",
+        target: process.env.VITE_API_BASE_URL || "http://localhost:4000",
         changeOrigin: true,
+        rewrite: (path) => path.replace(/^\/api/, "/api"),
       },
     },
   },
