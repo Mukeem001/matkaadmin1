@@ -1,0 +1,46 @@
+{
+  "name": "matka-api-server",
+  "version": "0.0.0",
+  "description": "Matka Admin Panel API Server - Hostinger Deployment",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0",
+    "npm": ">=9.0.0"
+  },
+  "scripts": {
+    "dev": "cross-env NODE_ENV=development tsx artifacts/api-server/src/index.ts",
+    "build": "cd artifacts/api-server && tsx build.ts",
+    "start": "node artifacts/api-server/dist/index.js",
+    "typecheck": "tsc -p artifacts/api-server/tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "axios": "^1.13.6",
+    "bcryptjs": "^3.0.3",
+    "cheerio": "^1.2.0",
+    "cookie-parser": "^1.4.7",
+    "cors": "^2",
+    "cross-env": "^10.1.0",
+    "date-fns": "^3.6.0",
+    "dotenv": "^17.3.1",
+    "drizzle-orm": "^0.45.1",
+    "esbuild": "^0.27.3",
+    "express": "^5",
+    "jsonwebtoken": "^9.0.3",
+    "multer": "^2.0.0",
+    "node-cron": "^4.2.1",
+    "pg": "^8.20.0",
+    "tsx": "^4.21.0",
+    "zod": "^3.22.4"
+  },
+  "devDependencies": {
+    "@types/cookie-parser": "^1.4.10",
+    "@types/cors": "^2.8.19",
+    "@types/express": "^5.0.6",
+    "@types/jsonwebtoken": "^9.0.10",
+    "@types/multer": "^1.4.11",
+    "@types/node": "^25.3.3",
+    "@types/node-cron": "^3.0.11",
+    "typescript": "~5.9.2"
+  }
+}
