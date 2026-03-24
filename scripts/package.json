@@ -1,0 +1,17 @@
+{
+  "name": "@workspace/scripts",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "hello": "tsx ./src/hello.ts",
+    "seed-admin": "tsx ./src/seed-admin.ts",
+    "seed-demo": "tsx ./src/seed-demo.ts",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "devDependencies": {
+    "@types/node": "^25.3.3",
+    "dotenv": "^17.3.1",
+    "tsx": "^4.21.0"
+  }
+}

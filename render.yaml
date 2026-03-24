@@ -1,0 +1,13 @@
+services:
+  - type: web
+    name: matka-admin-panel
+    env: node
+    plan: free
+    buildCommand: "yarn install --production=false && yarn workspace @workspace/admin-panel run build"
+    startCommand: "npm install -g serve && serve -s artifacts/admin-panel/dist/public -l 3000"
+    healthCheckPath: /
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: "3000"
