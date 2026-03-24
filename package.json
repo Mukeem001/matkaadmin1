@@ -3,7 +3,9 @@
   "version": "0.0.0",
   "license": "MIT",
   "scripts": {
-    "build": "yarn workspaces run build",
+    "build": "cd artifacts/api-server && npm install && npm run build",
+    "start": "cd artifacts/api-server && npm start",
+    "build:all": "yarn workspaces run build",
     "typecheck:libs": "tsc --build",
     "typecheck": "yarn workspaces run typecheck"
   },

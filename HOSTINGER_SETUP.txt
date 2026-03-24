@@ -1,0 +1,26 @@
+# Hostinger Deployment Configuration
+# Hostinger Cloud ko batayna hai ki API server kahan hai
+
+# Step 1: Hostinger Dashboard mein yeh settings use karo:
+# =========================================================
+
+# **Root Directory / Application Root**: 
+# artifacts/api-server
+
+# **Build Command**:
+# npm install && npm run build
+
+# **Start Command**:
+# npm start
+
+# **Environment Variables**:
+# - PORT: 3000
+# - NODE_ENV: production
+# - DATABASE_URL: (your postgres URL)
+# - JWT_SECRET: (your secret)
+# - FRONTEND_URL: (your domain)
+
+# **Node.js Version**: 20 (or latest)
+
+# **Health Check Path**: /health
+# (optional, but helps Hostinger monitor your app)
