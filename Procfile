@@ -1,1 +1,1 @@
-web: cd artifacts/api-server && npm install --production && npm run start
+web: npm install && npm run build && npm start
