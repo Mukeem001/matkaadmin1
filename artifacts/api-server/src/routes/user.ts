@@ -225,7 +225,7 @@ router.post("/user/bids", userAuthMiddleware, async (req: AuthRequest, res): Pro
         number: bid.number,
         openTime: bid.openTime,
         closeTime: bid.closeTime,
-        currentTime: bid.currentTime.toISOString(),
+        currentTime: bid.currentTime?.toISOString() ?? null,
         status: bid.status,
         createdAt: bid.createdAt.toISOString(),
       },

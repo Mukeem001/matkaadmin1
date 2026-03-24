@@ -48,6 +48,33 @@ const autoConfigSchema = z.object({
   sourceUrl: z.string().url("Must be a valid URL").optional().or(z.literal("")),
 });
 
+// Helper function to determine result format based on URL
+function getResultFormat(sourceUrl?: string): "full" | "jodi-only" {
+  if (!sourceUrl) return "full"; // Default to full format
+  if (sourceUrl.includes("satta-king-fast.com")) return "jodi-only";
+  return "full";
+}
+
+// Helper function to format results display
+function formatResultsDisplay(results: { open?: string; jodi?: string; close?: string } | undefined, format: "full" | "jodi-only"): string {
+  if (!results) return format === "jodi-only" ? "**" : "*** - ** - ***";
+  
+  if (format === "jodi-only") {
+    return results.jodi || "**";
+  } else {
+    return `${results.open || "***"} - ${results.jodi || "**"} - ${results.close || "***"}`;
+  }
+}
+
+function isHardFetchError(fetchError?: string | null | undefined): boolean {
+  if (!fetchError) return false;
+  const msg = fetchError.toLowerCase();
+  if (msg.includes("invalid result format") || msg.includes("null")) {
+    return false;
+  }
+  return true;
+}
+
 function MarketDialog({ market, open, setOpen, onSave }: { market?: Market | null; open: boolean; setOpen: (v: boolean) => void; onSave: (data: any) => Promise<void> }) {
   const { toast } = useToast();
   const [isSaving, setIsSaving] = useState(false);
@@ -259,71 +286,37 @@ export default function Markets2() {
     fetchResultsForDate();
   }, [selectedDate, markets, token]);
 
-  // Fetch current results
+  // Initialize current results from market data (not a POST fetch)
   useEffect(() => {
-    const fetchCurrentResults = async () => {
-      if (markets.length === 0 || !token) return;
-      const results: Record<number, { open?: string; jodi?: string; close?: string }> = {};
-      for (const market of markets) {
-        try {
-          const response = await fetch(`/api/markets2/${market.id}/fetch-now`, {
-            method: "POST",
-            headers: {
-              "Authorization": `Bearer ${token}`,
-              "Content-Type": "application/json",
-            },
-          });
-          if (!response.ok) {
-            console.error(`Failed to fetch current results for market ${market.id}: ${response.status}`);
-            continue;
-          }
-          const data = await response.json();
-          if (data.success && data.data) {
-            results[market.id] = {
-              open: data.data.openResult || "***",
-              jodi: data.data.jodiResult || "**",
-              close: data.data.closeResult || "***",
-            };
-          }
-        } catch (error) {
-          console.error(`Error fetching current results for market ${market.id}:`, error);
-        }
+    if (markets.length === 0) return;
+    const results: Record<number, { open?: string; jodi?: string; close?: string }> = {};
+    for (const market of markets) {
+      if (market.openResult || market.jodiResult || market.closeResult) {
+        results[market.id] = {
+          open: market.openResult,
+          jodi: market.jodiResult,
+          close: market.closeResult,
+        };
       }
-      setCurrentResults(results);
-    };
-    fetchCurrentResults();
-  }, [markets, token]);
+    }
+    setCurrentResults(results);
+  }, [markets]);
 
-  // Fetch live results
+  // Initialize live results from market data (not a GET fetch)
   useEffect(() => {
-    const fetchLiveResults = async () => {
-      if (markets.length === 0 || !token) return;
-      const results: Record<number, { open?: string; jodi?: string; close?: string }> = {};
-      for (const market of markets) {
-        try {
-          const response = await fetch(`/api/markets2/${market.id}/live-results`, {
-            headers: { "Authorization": `Bearer ${token}` },
-          });
-          if (!response.ok) {
-            console.error(`Failed to fetch live results for market ${market.id}: ${response.status}`);
-            continue;
-          }
-          const data = await response.json();
-          if (data.success && data.data) {
-            results[market.id] = {
-              open: data.data.openResult || "***",
-              jodi: data.data.jodiResult || "**",
-              close: data.data.closeResult || "***",
-            };
-          }
-        } catch (error) {
-          console.error(`Error fetching live results for market ${market.id}:`, error);
-        }
+    if (markets.length === 0) return;
+    const results: Record<number, { open?: string; jodi?: string; close?: string }> = {};
+    for (const market of markets) {
+      if (market.openResult || market.jodiResult || market.closeResult) {
+        results[market.id] = {
+          open: market.openResult,
+          jodi: market.jodiResult,
+          close: market.closeResult,
+        };
       }
-      setLiveResults(results);
-    };
-    fetchLiveResults();
-  }, [markets, token]);
+    }
+    setLiveResults(results);
+  }, [markets]);
 
   const displayDate = useMemo(() => {
     const date = new Date(selectedDate);
@@ -380,7 +373,9 @@ export default function Markets2() {
       toast({ title: "No source URL", variant: "destructive" });
       return;
     }
+
     setFetchingId(market.id);
+
     try {
       const response = await fetch(`/api/markets2/${market.id}/fetch-now`, {
         method: "POST",
@@ -388,22 +383,59 @@ export default function Markets2() {
           "Authorization": `Bearer ${token}`,
         },
       });
+
       if (!response.ok) {
         throw new Error(`Failed to fetch: ${response.status}`);
       }
+
       const result = await response.json();
-      if (result.success) {
+      const message = typeof result.message === "string" ? result.message : "No result data";
+
+      if (result.success && result.data) {
         setCurrentResults((prev) => ({
           ...prev,
           [market.id]: {
-            open: result.data?.openResult ?? "***",
-            jodi: result.data?.jodiResult ?? "**",
-            close: result.data?.closeResult ?? "***",
+            open: result.data.openResult ?? market.openResult ?? "***",
+            jodi: result.data.jodiResult ?? market.jodiResult ?? "**",
+            close: result.data.closeResult ?? market.closeResult ?? "***",
           },
         }));
-        toast({ title: "✓ Fetch successful", description: result.message });
+
+        setMarkets((prev) => prev.map((m) => m.id === market.id ? {
+          ...m,
+          openResult: result.data.openResult ?? m.openResult,
+          jodiResult: result.data.jodiResult ?? m.jodiResult,
+          closeResult: result.data.closeResult ?? m.closeResult,
+          lastFetchedAt: new Date().toISOString(),
+          fetchError: undefined,
+        } : m));
+
+        toast({ title: "✓ Fetch successful", description: message });
+      } else if (message.toLowerCase().includes("invalid result format") || message.toLowerCase().includes("null")) {
+        setCurrentResults((prev) => ({
+          ...prev,
+          [market.id]: {
+            open: market.openResult ?? prev[market.id]?.open ?? "***",
+            jodi: market.jodiResult ?? prev[market.id]?.jodi ?? "**",
+            close: market.closeResult ?? prev[market.id]?.close ?? "***",
+          },
+        }));
+
+        setMarkets((prev) => prev.map((m) => m.id === market.id ? {
+          ...m,
+          fetchError: undefined,
+          lastFetchedAt: new Date().toISOString(),
+        } : m));
+
+        toast({ title: "Fetch result not ready", description: message });
       } else {
-        toast({ title: "Fetch Failed", description: result.message, variant: "destructive" });
+        setMarkets((prev) => prev.map((m) => m.id === market.id ? {
+          ...m,
+          fetchError: message,
+          lastFetchedAt: new Date().toISOString(),
+        } : m));
+
+        toast({ title: "Fetch Failed", description: message, variant: "destructive" });
       }
     } catch (err) {
       toast({ title: "Error", description: (err as Error).message, variant: "destructive" });
@@ -501,8 +533,8 @@ export default function Markets2() {
               <TableRow>
                 <TableHead className="pl-6 min-w-[140px]">Market Name</TableHead>
                 <TableHead className="min-w-[130px]">Timings</TableHead>
-                <TableHead className="min-w-[160px]">Current Results (O/J/C)</TableHead>
-                <TableHead className="min-w-[160px]">Results (O/J/C)</TableHead>
+                <TableHead className="min-w-[160px]">Current Results</TableHead>
+                <TableHead className="min-w-[160px]">Results ({displayDate.split("(")[0].trim()})</TableHead>
                 <TableHead>Status</TableHead>
                 <TableHead className="min-w-[100px]">Auto Update</TableHead>
                 <TableHead className="min-w-[180px]">Source URL</TableHead>
@@ -524,12 +556,26 @@ export default function Markets2() {
                   </TableCell>
                   <TableCell>
                     <div className="font-mono font-semibold tracking-widest text-primary text-sm">
-                      {currentResults[market.id]?.open || "***"} - {currentResults[market.id]?.jodi || "**"} - {currentResults[market.id]?.close || "***"}
+                      {formatResultsDisplay(
+                        currentResults[market.id] || (market.openResult || market.jodiResult || market.closeResult ? {
+                          open: market.openResult,
+                          jodi: market.jodiResult,
+                          close: market.closeResult,
+                        } : undefined),
+                        getResultFormat(market.sourceUrl)
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
                     <div className="font-mono font-semibold tracking-widest text-primary text-sm">
-                      {liveResults[market.id]?.open || "***"} - {liveResults[market.id]?.jodi || "**"} - {liveResults[market.id]?.close || "***"}
+                      {formatResultsDisplay(
+                        dateResults[market.id] || (market.openResult || market.jodiResult || market.closeResult ? {
+                          open: market.openResult,
+                          jodi: market.jodiResult,
+                          close: market.closeResult,
+                        } : undefined),
+                        getResultFormat(market.sourceUrl)
+                      )}
                     </div>
                   </TableCell>
                   <TableCell>
@@ -557,7 +603,7 @@ export default function Markets2() {
                     <div className="flex items-center gap-1.5 max-w-[200px]">
                       {market.sourceUrl ? (
                         <>
-                          {market.fetchError ? (
+                          {isHardFetchError(market.fetchError) ? (
                             <Tooltip>
                               <TooltipTrigger>
                                 <AlertCircle className="w-3.5 h-3.5 text-destructive flex-shrink-0" />

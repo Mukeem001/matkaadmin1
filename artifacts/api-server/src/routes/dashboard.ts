@@ -40,7 +40,7 @@ const flexibleAuthMiddleware = (req: AuthRequest, res: Response, next: NextFunct
   }
 };
 
-router.get("/dashboard/stats", flexibleAuthMiddleware, async (req, res): Promise<void> => {
+router.get("/dashboard/stats", flexibleAuthMiddleware, async (req: Request, res: Response): Promise<void> => {
   try {
     console.log("[Dashboard Stats] Request received");
     const today = new Date();

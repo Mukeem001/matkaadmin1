@@ -3,6 +3,7 @@ import { sql } from "drizzle-orm";
 import { db } from "@workspace/db";
 import { GetBidsQueryParams } from "@workspace/api-zod";
 import { authMiddleware } from "../middlewares/auth.js";
+import { processMarketBidsPreClose } from "../lib/bid-processor.js";
 
 const router: IRouter = Router();
 
@@ -24,7 +25,7 @@ router.get("/bids", authMiddleware, async (req, res): Promise<void> => {
 
     const totalResult = await db.execute(sql`SELECT COUNT(*) as count FROM bids`) as any;
 
-    const bids = (bidsResult.rows || []).map(b => ({
+    const bids = (bidsResult.rows || []).map((b: any) => ({
       id: b.id,
       userId: b.user_id,
       userName: "User " + b.user_id,
@@ -48,6 +49,37 @@ router.get("/bids", authMiddleware, async (req, res): Promise<void> => {
     });
   } catch (err) {
     console.error("[Bids] Error:", err);
+    res.status(500).json({ error: (err as Error).message });
+  }
+});
+
+/**
+ * POST /bids/process-pre-close/:marketId
+ * Process all pending bids for a market before closeTime - 20 minutes
+ * Returns win/loss status and updates wallet for winners
+ */
+router.post("/process-pre-close/:marketId", authMiddleware, async (req, res): Promise<void> => {
+  try {
+    const marketId = parseInt(req.params.marketId as string, 10);
+
+    if (isNaN(marketId)) {
+      res.status(400).json({ error: "Invalid market ID" });
+      return;
+    }
+
+    const result = await processMarketBidsPreClose(marketId);
+
+    if (!result.success) {
+      res.status(400).json(result);
+      return;
+    }
+
+    res.json({
+      ...result,
+      success: true,
+    });
+  } catch (err) {
+    console.error("[Pre-Close Processing] Error:", err);
     res.status(500).json({ error: (err as Error).message });
   }
 });
