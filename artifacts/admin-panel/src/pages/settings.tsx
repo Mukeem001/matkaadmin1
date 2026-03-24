@@ -56,6 +56,7 @@ export default function Settings() {
   const [loadingApk, setLoadingApk] = useState(false);
   const [newUpi, setNewUpi] = useState({ name: "", upiId: "", displayName: "" });
   const [uploadingFile, setUploadingFile] = useState(false);
+  const [uploadingQr, setUploadingQr] = useState(false);
   const [newApkVersion, setNewApkVersion] = useState({ versionCode: "1", versionName: "1.0.0" });
 
   const form = useForm<SettingsForm>({
@@ -215,6 +216,55 @@ export default function Settings() {
     }
   };
 
+  // Handle QR Code Upload
+  const handleQrCodeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    const validTypes = ["image/png", "image/jpeg", "image/jpg"];
+    const validExts = [".png", ".jpg", ".jpeg"];
+    const fileExt = file.name.substring(file.name.lastIndexOf("")).toLowerCase();
+
+    if (!validTypes.includes(file.type) && !validExts.includes(fileExt)) {
+      toast({ title: "Only PNG and JPEG images are allowed", variant: "destructive" });
+      return;
+    }
+
+    if (file.size > 5 * 1024 * 1024) {
+      toast({ title: "File size must be less than 5MB", variant: "destructive" });
+      return;
+    }
+
+    setUploadingQr(true);
+    const formData = new FormData();
+    formData.append("qrCode", file);
+
+    try {
+      const token = localStorage.getItem("token");
+      const response = await fetch("/api/settings/upload-qr", {
+        method: "POST",
+        headers: {
+          "Authorization": token ? `Bearer ${token}` : "",
+        },
+        body: formData,
+      });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const data = await response.json();
+      toast({ title: "QR code uploaded successfully" });
+      
+      // Update the form with new QR code URL
+      form.setValue("qrCodeUrl", data.qrCodeUrl);
+      
+      // Reset file input
+      const fileInput = document.getElementById("qr-upload") as HTMLInputElement;
+      if (fileInput) fileInput.value = "";
+    } catch (error) {
+      console.error("Error uploading QR code:", error);
+      toast({ title: "Error uploading QR code", variant: "destructive" });
+    }
+    setUploadingQr(false);
+  };
+
   useEffect(() => {
     if (settings) {
       form.reset({
@@ -291,8 +341,33 @@ export default function Settings() {
                     <Input {...form.register("upiId")} className="rounded-xl bg-white border-blue-100" placeholder="merchant@upi" />
                   </div>
                   <div className="space-y-2">
-                    <Label className="text-blue-900">QR Code Image URL (Optional)</Label>
-                    <Input {...form.register("qrCodeUrl")} className="rounded-xl bg-white border-blue-100" placeholder="https://..." />
+                    <Label className="text-blue-900">QR Code Image URL</Label>
+                    <div className="flex gap-2">
+                      <Input {...form.register("qrCodeUrl")} className="rounded-xl bg-white border-blue-100 flex-1" placeholder="https://..." disabled />
+                      <div className="relative">
+                        <input
+                          type="file"
+                          accept=".png,.jpg,.jpeg,image/png,image/jpeg"
+                          onChange={handleQrCodeUpload}
+                          disabled={uploadingQr}
+                          className="sr-only"
+                          id="qr-upload"
+                        />
+                        <label
+                          htmlFor="qr-upload"
+                          className="flex items-center justify-center px-4 py-2 rounded-xl bg-blue-600 hover:bg-blue-700 text-white cursor-pointer transition-colors disabled:opacity-50"
+                        >
+                          {uploadingQr ? (
+                            <Loader2 className="w-4 h-4 animate-spin" />
+                          ) : (
+                            <>
+                              <FileUp className="w-4 h-4" />
+                            </>
+                          )}
+                        </label>
+                      </div>
+                    </div>
+                    <p className="text-xs text-blue-700 mt-1">Upload PNG or JPEG (max 5MB)</p>
                   </div>
                 </div>
               </div>

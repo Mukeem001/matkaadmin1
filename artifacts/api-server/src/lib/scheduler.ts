@@ -3,6 +3,7 @@ import { eq } from "drizzle-orm";
 import { db, marketsTable, markets2Table } from "@workspace/db";
 import { fetchAndUpdateMarketResult } from "./scraper.js";
 import { fetchAndUpdateMarkets2Result, updateMarket2ActivityStatus } from "./scraper2.js";
+import { processMarketBidsPreClose } from "./bid-processor.js";
 
 let schedulerTask: cron.ScheduledTask | null = null;
 let midnightResetTask: cron.ScheduledTask | null = null;
@@ -130,6 +131,21 @@ export function startScheduler() {
             console.log(`[Scheduler] ${market.name}: ${result.value.message}`);
           } else {
             console.error(`[Scheduler] ${market.name}: Failed - ${result.reason}`);
+          }
+        });
+
+        // 🎯 After fetching results, process bids automatically
+        console.log(`[Scheduler] Processing bids for ${autoUpdateMarkets.length} market(s)...`);
+        const bidResults = await Promise.allSettled(
+          autoUpdateMarkets.map(market => processMarketBidsPreClose(market.id))
+        );
+
+        bidResults.forEach((result, i) => {
+          const market = autoUpdateMarkets[i];
+          if (result.status === "fulfilled") {
+            console.log(`[Scheduler] ${market.name} bids: ${result.value.message}`);
+          } else {
+            console.error(`[Scheduler] ${market.name} bids: Failed - ${result.reason}`);
           }
         });
       }

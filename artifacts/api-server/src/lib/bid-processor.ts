@@ -2,6 +2,7 @@ import { eq, and } from "drizzle-orm";
 import { sql } from "drizzle-orm";
 import { format } from "date-fns";
 import { db, bidsTable, usersTable, gameRatesTable, resultsTable, marketsTable } from "@workspace/db";
+import { getTodayDateIST } from "./date-utils";
 
 export interface MarketResult {
   openResult?: string;
@@ -23,7 +24,7 @@ export interface GameRates {
 /**
  * Check if a bid number matches the result based on game type
  */
-function isBidWinner(bidNumber: string, gameType: string, result: MarketResult): boolean {
+export function isBidWinner(bidNumber: string, gameType: string, result: MarketResult): boolean {
   const { openResult, closeResult, jodiResult, pannaResult } = result;
 
   console.log(`Checking bid: number=${bidNumber}, gameType=${gameType}, result=`, result);
@@ -114,7 +115,7 @@ function isBidWinner(bidNumber: string, gameType: string, result: MarketResult):
 /**
  * Calculate winnings based on game type and rates
  */
-function calculateWinnings(bidAmount: number, gameType: string, rates: GameRates): number {
+export function calculateWinnings(bidAmount: number, gameType: string, rates: GameRates): number {
   // Map snake_case game types to camelCase property names
   const gameTypeMapping: Record<string, keyof GameRates> = {
     "single_digit": "singleDigit",
@@ -259,8 +260,8 @@ export async function processMarketBidsPreClose(marketId: number): Promise<{
       };
     }
 
-    // Get TODAY's result for this market
-    const today = format(new Date(), "yyyy-MM-dd");
+    // Get TODAY's result for this market (in IST)
+    const today = getTodayDateIST();
     const [result] = await db.select().from(resultsTable).where(
       and(
         eq(resultsTable.marketId, marketId),

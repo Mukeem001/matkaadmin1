@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useGetDashboardStats } from "@workspace/api-client-react";
 import { format } from "date-fns";
 
@@ -24,7 +24,7 @@ export default function Bids() {
   const [status, setStatus] = useState("all");
 
   // 🔥 SAME API AS DASHBOARD
-  const { data: stats, isLoading } = useGetDashboardStats();
+  const { data: stats, isLoading, refetch } = useGetDashboardStats();
 
   // 🔎 frontend filter (same UI)
   const bids = useMemo(() => {
@@ -36,6 +36,21 @@ export default function Bids() {
       (bid) => bid.status === status
     );
   }, [stats, status]);
+
+  // 🔄 Auto-refresh bid data every 2 minutes to check for result updates
+  useEffect(() => {
+    console.log("[Bids] Setting up auto-refresh interval");
+    
+    const autoRefreshInterval = setInterval(() => {
+      console.log("[Bids] Auto-refreshing bid data...");
+      refetch();
+    }, 120000); // 2 minutes
+
+    return () => {
+      clearInterval(autoRefreshInterval);
+      console.log("[Bids] Cleared auto-refresh interval");
+    };
+  }, [refetch]);
 
   return (
     <div className="space-y-6">

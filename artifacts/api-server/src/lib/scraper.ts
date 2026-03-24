@@ -3,6 +3,7 @@ import * as cheerio from "cheerio";
 import { eq, and } from "drizzle-orm";
 import { format } from "date-fns";
 import { db, marketsTable, scraperLogsTable, resultsTable } from "@workspace/db";
+import { getTodayDateIST } from "./date-utils";
 
 export interface ScrapedResult {
   openResult?: string;
@@ -299,8 +300,7 @@ export async function fetchAndUpdateMarketResult(
   }
 
   // ✅ TODAY's DATE (not YESTERDAY)
-  const saveDate = new Date();
-  const resultDateStr = format(saveDate, "yyyy-MM-dd");
+  const resultDateStr = getTodayDateIST();
 
   const [existingResult] = await db
     .select()
